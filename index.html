@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="抓烏龜：先丟對子、再從別家盲抽，最後剩下烏龜牌的輸家出局。四人撲克童玩。"
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='82'%3E🐢%3C/text%3E%3C/svg%3E" />
+    <title>抓烏龜</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <p class="eyebrow">童玩桌遊 · 抓烏龜</p>
+        <h1>抓烏龜</h1>
+        <p class="tagline">先丟對子 · 再盲抽 · 剩下烏龜牌的人出局</p>
+      </header>
+
+      <section class="meter" aria-label="對局狀態">
+        <div class="meter-item highlight">
+          <span class="label">我的連續勝利</span>
+          <strong id="best-label">—</strong>
+        </div>
+        <div class="meter-item">
+          <span class="label">本局</span>
+          <strong id="scores" class="score-row"></strong>
+        </div>
+        <div class="meter-actions">
+          <button type="button" id="btn-mute" class="secondary" aria-pressed="true">音效開</button>
+        </div>
+      </section>
+
+      <div class="controls">
+        <button type="button" id="btn-new" >開局</button>
+      </div>
+
+      <p id="status" class="status" role="status">四人對局：點對手的牌背抽牌。</p>
+
+      <section id="game" class="game" aria-label="抓烏龜牌桌">
+        <div id="reveal" class="reveal hidden" aria-live="polite"></div>
+        <div id="me-col" class="me-col">
+          <p class="me-label">已丟出的牌（最近）</p>
+          <div id="removed" class="removed-row" aria-label="已丟出的牌"></div>
+        </div>
+        <div id="players" class="players" aria-label="各家手牌"></div>
+      </section>
+
+      <details class="rules">
+        <summary>規則</summary>
+        <ul>
+          <li>52 張撲克＋1 張鬼牌（＝烏龜牌），盡量平分給 4 家。</li>
+          <li>開局先把手上的「對子」（同數字、不限花色）丟到中間。</li>
+          <li>輪到你時，從任何一家手中<b>盲抽</b>一張（點牌背）；抽中能湊對的牌就立刻丟掉一對。</li>
+          <li>牌張越來越少，最後手裡剩下唯一一張烏龜牌的人就是輸家；其餘各家 +1 分。</li>
+        </ul>
+      </details>
+
+      <p class="attribution">美術：Playing Cards Pack · Kenney.nl（CC0）；音效：Web Audio 合成</p>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
