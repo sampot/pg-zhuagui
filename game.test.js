@@ -81,6 +81,23 @@ describe("removePairs", () => {
     expect(kept.length).toBe(1);
     expect(removed.length).toBe(4);
   });
+  it("removes floor(n/2)*2 from an odd count (three of a kind drops two, keeps one)", () => {
+    const { kept, removed } = removePairs([
+      { rank: 9, suit: 0 },
+      { rank: 9, suit: 1 },
+      { rank: 9, suit: 2 },
+    ]);
+    expect(kept.length).toBe(1);
+    expect(removed.length).toBe(2);
+  });
+  it("removes all of four-of-a-kind plus a single", () => {
+    const hand = Array.from({ length: 4 }, (_, i) => ({ rank: 4, suit: i }));
+    hand.push({ rank: 7, suit: 0 });
+    const { kept, removed } = removePairs(hand);
+    expect(kept.length).toBe(1); // 只剩一張 7
+    expect(kept[0].rank).toBe(7);
+    expect(removed.length).toBe(4);
+  });
   it("keeps the joker always", () => {
     const hand = [
       { rank: 0, suit: 4 },
@@ -142,6 +159,19 @@ describe("drawCard flow", () => {
     expect(g.hands[1]).toEqual([{ rank: 1, suit: 0 }]); // match removed
     expect(g.removed.length).toBe(2);
   });
+  it("discards all even copies when a three-of-a-kind is completed", () => {
+    const g = newRound(4, seq);
+    g.hands[0] = [{ rank: 6, suit: 2 }];
+    g.hands[1] = [{ rank: 6, suit: 0 }, { rank: 6, suit: 1 }];
+    g.hands[2] = [];
+    g.hands[3] = [];
+    g.removed = [];
+    const res = drawCard(g, 0, 1, 0); // player1 draws a 6 → holds three 6s
+    expect(res.ok).toBe(true);
+    expect(res.paired).toBe(true);
+    expect(g.hands[1].filter((c) => c.rank === 6).length).toBe(1); // 留一張
+    expect(g.removed.filter((c) => c.rank === 6).length).toBe(2); // 丟兩張
+  });
   it("rejects self-draw", () => {
     const g = newRound(4, seq);
     const res = drawCard(g, 0, 0, 0);
@@ -158,6 +188,16 @@ describe("checkDone + nextTurn", () => {
     g.done = checkDone(g);
     expect(g.done).not.toBeNull();
     expect(g.done.turtle).toBe(0);
+  });
+  it("ends when a single player holds all remaining cards (must include joker)", () => {
+    const g = newRound(4, seq);
+    g.hands[0] = [];
+    g.hands[1] = [];
+    g.hands[2] = [{ rank: 3, suit: 0 }, { rank: 7, suit: 1 }, { rank: 0, suit: 4 }];
+    g.hands[3] = [];
+    g.done = checkDone(g);
+    expect(g.done).not.toBeNull();
+    expect(g.done.turtle).toBe(2);
   });
   it("nextTurn skips empty hands", () => {
     const g = newRound(4, seq);

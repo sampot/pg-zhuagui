@@ -39,29 +39,30 @@ export function isPair(a, b) {
   return a.rank !== 0 && a.rank === b.rank;
 }
 
-/** 從一手牌中移除所有對子，回傳成對後的手牌與被丟掉的牌。 */
+/**
+ * 從一手牌中移除所有對子，回傳成對後的手牌與被丟掉的牌。
+ * 同一 rank 拿 n 張：丟掉 n - (n%2) 張（成對），留下 n%2 張（0 或 1）。
+ */
 export function removePairs(hand) {
   const count = new Map();
-  for (const c of hand) count.set(c.rank, (count.get(c.rank) || 0) + 1);
+  for (const c of hand) {
+    if (c.rank !== 0) count.set(c.rank, (count.get(c.rank) || 0) + 1);
+  }
   const kept = [];
   const removed = [];
-  const toDrop = new Map(); // 該 rank 剩餘要丟的張數
+  const keptSoFar = new Map();
   for (const c of hand) {
     if (c.rank === 0) {
       kept.push(c); // 烏龜牌永不離開
       continue;
     }
-    let remaining = toDrop.get(c.rank) ?? 0;
-    if (remaining === 0) {
-      // 該 rank 全數：留 n%2，其餘（偶數張）全丟
-      remaining = Math.floor(count.get(c.rank) / 2) * 2;
-      toDrop.set(c.rank, remaining);
-    }
-    if (remaining > 0) {
-      removed.push(c);
-      toDrop.set(c.rank, remaining - 1);
-    } else {
+    const toKeep = count.get(c.rank) % 2;
+    const k = keptSoFar.get(c.rank) || 0;
+    if (k < toKeep) {
+      keptSoFar.set(c.rank, k + 1);
       kept.push(c);
+    } else {
+      removed.push(c);
     }
   }
   return { kept, removed };
@@ -127,19 +128,27 @@ export function cardText(c) {
   return `${rankText(c.rank)}${SUIT_CHAR[c.suit]}`;
 }
 
-/** 是否結束：全場只剩一張牌（必定是烏龜牌）。 */
+/**
+ * 是否結束：
+ *  - 全場只剩一張牌（必定是烏龜牌）→ 該家是烏龜。
+ *  - 只剩一家有牌（總張數恆為奇數，必然含烏龜牌）→ 該家是烏龜，
+ *    避免其他家都空手、無人可抽而卡死。
+ */
 export function checkDone(state) {
   const remaining = state.hands.map((h, i) => ({ i, n: h.length })).filter((x) => x.n > 0);
   const total = remaining.reduce((a, x) => a + x.n, 0);
   if (total <= 1) {
     return { turtle: total === 1 ? remaining[0].i : null, remaining };
   }
+  if (remaining.length === 1) {
+    return { turtle: remaining[0].i, remaining };
+  }
   return null;
 }
 
 /**
  * 由 from 玩家手中盲抽一張（human 選第 pick 張／AI 隨機）。
- * 抽完立刻配對：成對則丟掉一對。
+ * 抽完立刻配對：成對則把該 rank 的偶數張全數丟掉。
  * 回傳 { ok, drawn, paired, by } 或 { ok:false }。
  */
 export function drawCard(state, from, by, pick = -1) {
@@ -151,25 +160,31 @@ export function drawCard(state, from, by, pick = -1) {
   const [card] = hand.splice(idx, 1);
 
   const byHand = state.hands[by];
-  const mate = byHand.find((c) => isPair(c, card));
-  let pairedPair = null;
-  if (mate) {
-    const mi = byHand.indexOf(mate);
-    pairedPair = [card, ...byHand.splice(mi, 1)];
-    state.removed.push(...pairedPair);
-  } else {
-    byHand.push(card);
+  // 抽到的牌放進手牌，再移除該 rank 的成對張數（留 0 或 1 張）
+  byHand.push(card);
+  let droppedCount = 0;
+  if (card.rank !== 0) {
+    const total = byHand.filter((c) => c.rank === card.rank).length;
+    const toDrop = total - (total % 2);
+    for (let i = byHand.length - 1; i >= 0 && droppedCount < toDrop; i--) {
+      if (byHand[i].rank === card.rank) {
+        state.removed.push(byHand[i]);
+        byHand.splice(i, 1);
+        droppedCount++;
+      }
+    }
   }
-  state.history.push({ by, from, card, paired: !!pairedPair, pair: pairedPair });
+  const paired = droppedCount > 0;
+  state.history.push({ by, from, card, paired, dropped: droppedCount });
   state.done = checkDone(state);
   if (state.done) {
     state.history.push({
       text: state.done.remaining.length
-        ? `烏龜出爐：第 ${state.done.remaining[0].i + 1} 家拿到最後一張！`
+        ? `烏龜出爐：第 ${state.done.remaining[0].i + 1} 家留下烏龜牌！`
         : "咦…全部配完了？",
     });
   }
-  return { ok: true, drawn: card, paired: !!pairedPair, pair: pairedPair, by, from };
+  return { ok: true, drawn: card, paired, by, from };
 }
 
 /** 下一位手牌非空的下家。 */

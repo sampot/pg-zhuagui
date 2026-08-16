@@ -21,8 +21,12 @@
       </header>
 
       <section class="meter" aria-label="對局狀態">
+        <div class="meter-item">
+          <span class="label">連勝</span>
+          <strong id="streak-label">0</strong>
+        </div>
         <div class="meter-item highlight">
-          <span class="label">我的連續勝利</span>
+          <span class="label">最佳</span>
           <strong id="best-label">—</strong>
         </div>
         <div class="meter-item">
@@ -35,7 +39,7 @@
       </section>
 
       <div class="controls">
-        <button type="button" id="btn-new" >開局</button>
+        <button type="button" id="btn-new">發牌中…</button>
       </div>
 
       <p id="status" class="status" role="status">四人對局：點對手的牌背抽牌。</p>
@@ -43,11 +47,17 @@
       <section id="game" class="game" aria-label="抓烏龜牌桌">
         <div id="reveal" class="reveal hidden" aria-live="polite"></div>
         <div id="me-col" class="me-col">
-          <p class="me-label">已丟出的牌（最近）</p>
+          <p class="me-label">已丟出的牌（最近 8 張）</p>
           <div id="removed" class="removed-row" aria-label="已丟出的牌"></div>
         </div>
         <div id="players" class="players" aria-label="各家手牌"></div>
+        <div id="result" class="result hidden" role="dialog" aria-label="本局結果"></div>
       </section>
+
+      <details class="log">
+        <summary>對局紀錄</summary>
+        <ol id="log" class="log-list"></ol>
+      </details>
 
       <details class="rules">
         <summary>規則</summary>
