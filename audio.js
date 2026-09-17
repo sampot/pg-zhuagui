@@ -111,4 +111,14 @@ export class ZhuaguiAudio {
   error() {
     this.tone(140, 0.12, "square", 0.08);
   }
+
+  heartbeat() {
+    // 殘局心跳：兩記低頻闷響
+    this.tone(64, 0.1, "sine", 0.5);
+    this.tone(52, 0.16, "sine", 0.42, 0.17);
+  }
+
+  whoosh() {
+    this.noise(0.18, 0.12);
+  }
 }

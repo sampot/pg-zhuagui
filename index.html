@@ -54,6 +54,24 @@
       <p id="status" class="status" role="status">先設定人數與難度，再開始發牌。</p>
 
       <section id="game" class="game" aria-label="抓烏龜牌桌">
+        <div id="opp-row" class="opp-row" aria-label="AI 對手"></div>
+
+        <div class="center">
+          <div id="reveal" class="reveal hidden" aria-live="polite"></div>
+          <div class="pile-zone">
+            <div id="removed" class="pile" aria-label="公開丟牌堆"></div>
+            <span id="pile-count" class="pile-chip">已丟 0</span>
+          </div>
+        </div>
+
+        <div id="me-zone" class="me-zone">
+          <div class="me-head">
+            <span class="me-label">🙋 你的手</span>
+            <span id="me-count" class="me-count">0 張</span>
+          </div>
+          <div id="my-fan" class="fan myfan"></div>
+        </div>
+
         <div id="setup" class="setup hidden" role="dialog" aria-label="開局設定">
           <div class="setup-card">
             <h2>🐢 開局設定</h2>
@@ -73,12 +91,7 @@
             <p class="setup-note">盲抽配對・剩烏龜的輸・生涯戰績自動保存</p>
           </div>
         </div>
-        <div id="reveal" class="reveal hidden" aria-live="polite"></div>
-        <div id="me-col" class="me-col">
-          <p class="me-label">已丟出的牌（最近 8 張）</p>
-          <div id="removed" class="removed-row" aria-label="已丟出的牌"></div>
-        </div>
-        <div id="players" class="players" aria-label="各家手牌"></div>
+
         <div id="result" class="result hidden" role="dialog" aria-label="本局結果"></div>
       </section>
 
