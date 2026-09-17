@@ -429,6 +429,168 @@ main {
       box-shadow: 0 0 0 5px color-mix(in oklab, var(--neon) 22%, transparent);
     }
   }
+
+  .reveal-card {
+    transform-origin: center;
+    animation: card-flip 0.42s cubic-bezier(0.22, 0.9, 0.32, 1.1);
+  }
+
+  .reveal-card.partner {
+    animation-delay: 0.12s;
+  }
+
+  @keyframes card-flip {
+    from {
+      opacity: 0;
+      transform: translateY(26px) rotate(-14deg) rotateY(82deg) scale(0.7);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) rotate(0deg) rotateY(0deg) scale(1);
+    }
+  }
+
+  .reveal-box.ok .reveal-card.partner {
+    animation-name: card-flip-pair;
+  }
+
+  @keyframes card-flip-pair {
+    from {
+      opacity: 0;
+      transform: translateX(-14px) translateY(10px) rotate(-10deg) scale(0.7);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0) translateY(0) rotate(4deg) scale(1);
+    }
+  }
+
+  .badge-card {
+    animation: badge-pop 0.24s ease-out;
+  }
+
+  @keyframes badge-pop {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.6);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+}
+
+.reveal-cards {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.badges {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, var(--on-board) 12%, transparent);
+}
+
+.badge-card {
+  width: 1.35rem;
+  border-radius: 0.14rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.setup {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: color-mix(in oklab, #000 55%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+.setup.hidden {
+  display: none;
+}
+
+.setup-card {
+  width: min(100%, 19.5rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  text-align: center;
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 1rem;
+  padding: 1.1rem 1.2rem 1.2rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  animation: reveal-in 0.22s ease-out;
+}
+
+.setup-card h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: 0.04em;
+}
+
+.setup-label {
+  margin: 0.35rem 0 0;
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+.seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.35rem;
+}
+
+.seg-btn {
+  min-height: 2.6rem;
+  padding: 0.4rem 0.2rem;
+  font-size: 0.88rem;
+  background: var(--accent-soft);
+  color: var(--text);
+  border: 1.5px solid var(--line);
+  border-radius: 0.55rem;
+}
+
+.seg-btn.on {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent-dim);
+  box-shadow: 0 2px 8px color-mix(in oklab, var(--accent) 40%, transparent);
+}
+
+.setup-note {
+  margin: 0.15rem 0 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.result-career {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.ai-chip {
+  font-size: 0.74rem;
+  font-weight: 650;
+  border-radius: 999px;
+  padding: 0.18rem 0.5rem;
+  background: color-mix(in oklab, var(--pc, var(--accent)) 14%, var(--panel));
+  border: 1px solid color-mix(in oklab, var(--pc, var(--accent)) 45%, transparent);
 }
 
 .result {

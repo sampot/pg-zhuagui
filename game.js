@@ -208,3 +208,108 @@ export function tally(state, scores) {
   }
   return next;
 }
+
+/**
+ * AI 選抽牌目標。level：
+ *  - easy：有牌對手中均勻隨機。
+ *  - standard：手牌最多者（並列取先）。
+ *  - hard：計分制——優先抽玩家（+5）、避開只剩一張的準空手（−6）、
+ *    基礎分＝手牌張數；並列以 rand 決定。
+ * 無合法目標回傳 -1。
+ */
+export function pickAiDrawTarget(state, ai, level = "standard", rand = Math.random) {
+  const live = [];
+  for (let p = 0; p < state.playerCount; p++) {
+    if (p !== ai && state.hands[p].length > 0) live.push(p);
+  }
+  if (!live.length) return -1;
+  if (level === "easy") {
+    return live[Math.floor(rand() * live.length)];
+  }
+  if (level === "hard") {
+    const anyMulti = live.some((q) => state.hands[q].length > 1);
+    const scored = live.map((p) => {
+      let s = state.hands[p].length;
+      if (p === 0) s += 5;
+      if (state.hands[p].length === 1 && anyMulti) s -= 6;
+      return { p, s };
+    });
+    const max = Math.max(...scored.map((x) => x.s));
+    const tied = scored.filter((x) => x.s === max).map((x) => x.p);
+    return tied[Math.floor(rand() * tied.length)];
+  }
+  let target = live[0];
+  for (const p of live) if (state.hands[p].length > state.hands[target].length) target = p;
+  return target;
+}
+
+/** 生涯戰績（KV `pg-zhuagui-stats` 的結構）。ai[i] 對應第 i+1 家 AI。 */
+export function emptyStats() {
+  return {
+    best: 0,
+    games: 0,
+    turtles: 0,
+    muted: false,
+    ai: [
+      { games: 0, turtles: 0 },
+      { games: 0, turtles: 0 },
+      { games: 0, turtles: 0 },
+    ],
+  };
+}
+
+function isInt(v) {
+  return Number.isInteger(v) && v >= 0;
+}
+
+/** 解析 KV 字串；無效回傳 null。缺角補零、ai 補齊 3 位。 */
+export function parseStats(text) {
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (!isInt(raw.best) || !isInt(raw.games) || !isInt(raw.turtles)) return null;
+  if (raw.muted !== undefined && typeof raw.muted !== "boolean") return null;
+  const ai = emptyStats().ai;
+  if (raw.ai !== undefined) {
+    if (!Array.isArray(raw.ai)) return null;
+    for (let i = 0; i < Math.min(3, raw.ai.length); i++) {
+      const a = raw.ai[i];
+      if (!a || !isInt(a.games) || !isInt(a.turtles)) return null;
+      ai[i] = { games: a.games, turtles: a.turtles };
+    }
+  }
+  return { best: raw.best, games: raw.games, turtles: raw.turtles, muted: raw.muted === true, ai };
+}
+
+/** 把一局結果併入戰績。turtle：烏龜家索引（null＝無人中烏龜）。 */
+export function applyRoundStats(stats, turtle, playerCount) {
+  const base = emptyStats();
+  const src = { ...base, ...stats };
+  const ai = base.ai.map((z, i) => ({ ...(src.ai?.[i] || z) }));
+  const next = {
+    best: src.best,
+    games: src.games + 1,
+    turtles: src.turtles + (turtle === 0 ? 1 : 0),
+    muted: src.muted,
+    ai,
+  };
+  for (let p = 1; p < playerCount; p++) {
+    next.ai[p - 1].games += 1;
+    if (p === turtle) next.ai[p - 1].turtles += 1;
+  }
+  return next;
+}
+
+/** 從對局紀錄取「第 p 家曾被抽走哪些牌」，舊→新，最多 limit 張。 */
+export function drawnFromHistory(state, p, limit = 3) {
+  const out = [];
+  for (let i = state.history.length - 1; i >= 0 && out.length < limit; i--) {
+    const h = state.history[i];
+    if (h && h.from === p && h.card) out.unshift(h.card);
+  }
+  return out;
+}

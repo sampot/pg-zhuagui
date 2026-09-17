@@ -8,6 +8,11 @@ import {
   nextTurn,
   tally,
   cardText,
+  pickAiDrawTarget,
+  emptyStats,
+  parseStats,
+  applyRoundStats,
+  drawnFromHistory,
 } from "./game.js";
 import { ZhuaguiAudio } from "./audio.js";
 
@@ -20,28 +25,35 @@ const els = {
   scores: document.getElementById("scores"),
   reveal: document.getElementById("reveal"),
   result: document.getElementById("result"),
+  setup: document.getElementById("setup"),
   log: document.getElementById("log"),
   btnNew: document.getElementById("btn-new"),
   btnMute: document.getElementById("btn-mute"),
+  btnTrack: document.getElementById("btn-track"),
   streak: document.getElementById("streak-label"),
   best: document.getElementById("best-label"),
+  careerGames: document.getElementById("career-games"),
+  careerTurtles: document.getElementById("career-turtles"),
 };
 
-const BEST_KEY = "pg-zhuagui-best";
+const STATS_KEY = "pg-zhuagui-stats";
+const LEGACY_BEST_KEY = "pg-zhuagui-best";
 
 const PLAYER = 0;
-const PLAYERS = 4;
 const NAMES = ["你", "阿明", "小美", "大熊"];
 const COLORS = ["#e23d3d", "#2f8f4e", "#3b82f6", "#a855f7"];
 const REVEAL_MS = 1600;
 const LOG_MAX = 14;
+const BADGE_MAX = 3;
 
 let state = null;
 let scores = [0, 0, 0, 0];
-let phase = "idle"; // idle | dealing | playing | settling
-let reveal = null; // 抽牌揭示 { by, from, card, paired }
+let phase = "setup"; // setup | dealing | playing | settling
+let reveal = null; // 抽牌揭示 { by, from, card, paired, partner }
 let streak = 0;
-let best = 0;
+let stats = emptyStats();
+let settings = { playerCount: 4, difficulty: "standard" }; // difficulty: easy | standard | hard
+let trackMemory = true;
 let roundToken = 0; // 作廢過期的 setTimeout
 let dismissTimer = null;
 
@@ -73,7 +85,36 @@ function nameOf(p) {
 
 function paintStreak() {
   els.streak.textContent = String(streak);
-  els.best.textContent = best > 0 ? String(best) : "—";
+  els.best.textContent = stats.best > 0 ? String(stats.best) : "—";
+  els.careerGames.textContent = String(stats.games);
+  els.careerTurtles.textContent = String(stats.turtles);
+}
+
+/* ---------- 開局設定 ---------- */
+function paintSetup() {
+  els.setup.querySelectorAll(".seg-btn[data-count]").forEach((b) => {
+    const on = Number(b.dataset.count) === settings.playerCount;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", String(on));
+  });
+  els.setup.querySelectorAll(".seg-btn[data-diff]").forEach((b) => {
+    const on = b.dataset.diff === settings.difficulty;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", String(on));
+  });
+}
+
+function showSetup() {
+  phase = "setup";
+  state = null;
+  reveal = null;
+  clearTimeout(dismissTimer);
+  els.setup.classList.remove("hidden");
+  els.reveal.classList.add("hidden");
+  els.result.classList.add("hidden");
+  setStatus("先設定人數與難度，再開始發牌。");
+  render();
+  els.setup.querySelector("#btn-start").focus({ preventScroll: true });
 }
 
 /* ---------- 對局流程 ---------- */
@@ -83,8 +124,10 @@ function startRound() {
   phase = "dealing";
   reveal = null;
   clearTimeout(dismissTimer);
-  state = newRound(PLAYERS);
+  els.setup.classList.add("hidden");
+  state = newRound(settings.playerCount);
   scores = scores.slice(0, state.playerCount);
+  while (scores.length < state.playerCount) scores.push(0);
   audio.deal();
   setStatus("洗牌發牌中…");
   render();
@@ -147,6 +190,7 @@ function finishRound() {
   clearTimeout(dismissTimer);
   const turtle = state.done?.turtle ?? null;
   scores = tally(state, scores);
+  stats = applyRoundStats(stats, turtle, state.playerCount);
   if (turtle === PLAYER) {
     streak = 0;
     setStatus("🐢 啊…烏龜是你！", "lose");
@@ -157,30 +201,15 @@ function finishRound() {
     audio.win();
   } else {
     streak += 1;
-    if (streak > best) {
-      best = streak;
-      saveBest();
-    }
     setStatus(`🎉 ${nameOf(turtle)} 是烏龜！你逃過一劫 +1 分`, "win");
     audio.win();
   }
+  if (streak > stats.best) stats.best = streak;
+  saveStats();
   render();
 }
 
 /* ---------- 抽牌 ---------- */
-function pickAiDrawTarget(ai) {
-  const n = state.playerCount;
-  const live = [];
-  for (let p = 0; p < n; p++) {
-    if (p !== ai && state.hands[p].length > 0) live.push(p);
-  }
-  if (!live.length) return -1;
-  // 小聰明：挑牌數最多的對象，增加配對機會
-  let target = live[0];
-  for (const p of live) if (state.hands[p].length > state.hands[target].length) target = p;
-  return target;
-}
-
 function humanDraw(fromPlayer) {
   if (phase !== "playing" || !state || state.done || state.turn !== PLAYER) return;
   audio.click();
@@ -194,7 +223,7 @@ function humanDraw(fromPlayer) {
 }
 
 function aiDraw(ai) {
-  const target = pickAiDrawTarget(ai);
+  const target = pickAiDrawTarget(state, ai, settings.difficulty);
   if (target < 0) {
     finishRound();
     return;
@@ -208,8 +237,23 @@ function aiDraw(ai) {
   advanceTurn();
 }
 
+/** 找揭示用的配對手：剛丟進removed、同點數的最新兩張。 */
+function findPairCards(card) {
+  const out = [];
+  for (let i = state.removed.length - 1; i >= 0 && out.length < 2; i--) {
+    if (state.removed[i].rank === card.rank) out.unshift(state.removed[i]);
+  }
+  return out;
+}
+
 function doDraw(res) {
-  reveal = { by: PLAYER, from: res.from, card: res.drawn, paired: res.paired };
+  reveal = {
+    by: PLAYER,
+    from: res.from,
+    card: res.drawn,
+    paired: res.paired,
+    partner: res.paired ? findPairCards(res.drawn)[0] || null : null,
+  };
   const fromName = nameOf(res.from);
   setStatus(res.paired ? `🎉 你從 ${fromName} 抽到一張，配成對丟出！` : `你從 ${fromName} 抽了一張，沒配上。`, res.paired ? "win" : "warn");
   if (res.paired) audio.match();
@@ -224,7 +268,13 @@ function doAiDraw(res, ai) {
   setStatus(`🤖 ${nameOf(ai)} 從 ${fromName} 抽了一張：${pairedTxt}`, "");
   if (res.paired) audio.match();
   else audio.noMatch();
-  reveal = { by: ai, from: res.from, card: res.drawn, paired: res.paired };
+  reveal = {
+    by: ai,
+    from: res.from,
+    card: res.drawn,
+    paired: res.paired,
+    partner: res.paired ? findPairCards(res.drawn)[0] || null : null,
+  };
   render();
   scheduleRevealDismiss();
 }
@@ -239,24 +289,44 @@ function scheduleRevealDismiss() {
   }, REVEAL_MS);
 }
 
-/* ---------- 連勝紀錄（KV 可選） ---------- */
-async function loadBest() {
+/* ---------- 戰績持久化（KV：單一 JSON key） ---------- */
+async function loadStats() {
   try {
-    const res = await fetch(`/api/kv/${BEST_KEY}`);
+    const res = await fetch(`/api/kv/${STATS_KEY}`);
     if (res.ok) {
-      const t = (await res.text()).trim();
-      if (/^\d+$/.test(t)) best = Number(t);
+      const parsed = parseStats(await res.text());
+      if (parsed) stats = parsed;
     }
   } catch {
     /* 無 KV */
   }
+  if (stats.games === 0 && stats.best === 0) {
+    // 遷移：舊版只存最佳連勝的純數字 key
+    try {
+      const res = await fetch(`/api/kv/${LEGACY_BEST_KEY}`);
+      if (res.ok) {
+        const t = (await res.text()).trim();
+        if (/^\d+$/.test(t)) stats.best = Number(t);
+      }
+    } catch {
+      /* 無 KV */
+    }
+  }
+  audio.setEnabled(!stats.muted);
+  els.btnMute.setAttribute("aria-pressed", String(!stats.muted));
+  els.btnMute.textContent = stats.muted ? "音效關" : "音效開";
   paintStreak();
 }
 
-function saveBest() {
+function saveStats() {
   paintStreak();
   try {
-    Promise.resolve(fetch(`/api/kv/${BEST_KEY}`, { method: "PUT", body: String(best) })).catch(() => {});
+    Promise.resolve(
+      fetch(`/api/kv/${STATS_KEY}`, {
+        method: "PUT",
+        body: JSON.stringify(stats),
+      })
+    ).catch(() => {});
   } catch {
     /* 無 KV */
   }
@@ -264,7 +334,15 @@ function saveBest() {
 
 /* ---------- 渲染 ---------- */
 function render() {
-  if (!state) return;
+  renderSetup();
+  if (!state) {
+    renderScoresEmpty();
+    renderRemovedEmpty();
+    renderPlayersEmpty();
+    paintStreak();
+    renderButtons();
+    return;
+  }
   renderScores();
   renderRemoved();
   renderPlayers();
@@ -273,6 +351,22 @@ function render() {
   renderLog();
   renderButtons();
   paintStreak();
+}
+
+function renderSetup() {
+  els.setup.classList.toggle("hidden", phase !== "setup");
+}
+
+function renderScoresEmpty() {
+  els.scores.innerHTML = "";
+}
+
+function renderRemovedEmpty() {
+  els.removed.innerHTML = "";
+}
+
+function renderPlayersEmpty() {
+  els.playersArea.innerHTML = "";
 }
 
 function renderScores() {
@@ -364,6 +458,20 @@ function renderPlayer(p) {
     }
   }
   wrap.appendChild(fan);
+
+  // 記憶輔助：AI 曾被抽走的牌（可開關）
+  if (!showValues && trackMemory) {
+    const taken = drawnFromHistory(state, p, BADGE_MAX);
+    if (taken.length) {
+      const badges = document.createElement("div");
+      badges.className = "badges";
+      badges.setAttribute("aria-label", `${nameOf(p)} 曾被抽走`);
+      taken.forEach((c) => {
+        badges.appendChild(cardImg(c, "badge-card"));
+      });
+      wrap.appendChild(badges);
+    }
+  }
   return wrap;
 }
 
@@ -384,7 +492,13 @@ function renderReveal() {
     tag.className = "reveal-tag";
     tag.textContent = `${nameOf(reveal.by)} 抽了 ${nameOf(reveal.from)} 的牌`;
     box.appendChild(tag);
-    box.appendChild(cardImg(reveal.card, "reveal-card"));
+    const cards = document.createElement("div");
+    cards.className = "reveal-cards";
+    cards.appendChild(cardImg(reveal.card, "reveal-card"));
+    if (reveal.paired && reveal.partner) {
+      cards.appendChild(cardImg(reveal.partner, "reveal-card partner"));
+    }
+    box.appendChild(cards);
     const note = document.createElement("div");
     note.className = "reveal-note";
     note.textContent = reveal.paired ? "配成對，丟出！" : "未配上";
@@ -441,8 +555,20 @@ function renderResult() {
 
   const streakLine = document.createElement("p");
   streakLine.className = "result-streak";
-  streakLine.textContent = `你的連勝：${streak}｜最佳：${best > 0 ? best : "—"}`;
+  streakLine.textContent = `你的連勝：${streak}｜生涯：${stats.games} 場・當過 ${stats.turtles} 次烏龜｜最佳：${stats.best > 0 ? stats.best : "—"}`;
   inner.appendChild(streakLine);
+
+  const aiLine = document.createElement("p");
+  aiLine.className = "result-career";
+  for (let p = 1; p < state.playerCount; p++) {
+    const rec = stats.ai[p - 1];
+    const chip = document.createElement("span");
+    chip.className = "ai-chip";
+    chip.style.setProperty("--pc", COLORS[p % COLORS.length]);
+    chip.textContent = `對 ${nameOf(p)}：${rec.games} 局・🐢 ${rec.turtles}`;
+    aiLine.appendChild(chip);
+  }
+  inner.appendChild(aiLine);
 
   const btn = document.createElement("button");
   btn.type = "button";
@@ -452,6 +578,16 @@ function renderResult() {
     startRound();
   });
   inner.appendChild(btn);
+
+  const setupBtn = document.createElement("button");
+  setupBtn.type = "button";
+  setupBtn.className = "secondary";
+  setupBtn.textContent = "變更設定";
+  setupBtn.addEventListener("click", () => {
+    audio.click();
+    showSetup();
+  });
+  inner.appendChild(setupBtn);
 
   els.result.appendChild(inner);
   btn.focus({ preventScroll: true });
@@ -475,7 +611,10 @@ function renderLog() {
 }
 
 function renderButtons() {
-  if (phase === "dealing") {
+  if (phase === "setup") {
+    els.btnNew.disabled = true;
+    els.btnNew.textContent = "尚未開局";
+  } else if (phase === "dealing") {
     els.btnNew.disabled = true;
     els.btnNew.textContent = "發牌中…";
   } else if (phase === "playing") {
@@ -499,13 +638,40 @@ function bindEvents() {
     audio.setEnabled(!on);
     els.btnMute.setAttribute("aria-pressed", String(!on));
     els.btnMute.textContent = on ? "音效關" : "音效開";
+    stats.muted = on; // 原來的 enabled 被關掉
+    saveStats();
+  });
+  els.btnTrack.addEventListener("click", () => {
+    trackMemory = !trackMemory;
+    els.btnTrack.setAttribute("aria-pressed", String(trackMemory));
+    audio.click();
+    render();
+  });
+  els.setup.querySelectorAll(".seg-btn[data-count]").forEach((b) => {
+    b.addEventListener("click", () => {
+      audio.click();
+      settings.playerCount = Number(b.dataset.count);
+      paintSetup();
+    });
+  });
+  els.setup.querySelectorAll(".seg-btn[data-diff]").forEach((b) => {
+    b.addEventListener("click", () => {
+      audio.click();
+      settings.difficulty = b.dataset.diff;
+      paintSetup();
+    });
+  });
+  document.getElementById("btn-start").addEventListener("click", () => {
+    audio.click();
+    startRound();
   });
 }
 
 async function init() {
   bindEvents();
-  await loadBest();
-  startRound();
+  paintSetup();
+  await loadStats();
+  showSetup();
 }
 
 init();

@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="抓烏龜：先丟對子、再從別家盲抽，最後剩下烏龜牌的輸家出局。四人撲克童玩。"
+      content="抓烏龜：先丟對子、再從別家盲抽，最後剩下烏龜牌的輸家出局。2–4 人撲克童玩，含三檔 AI 難度。"
     />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='82'%3E🐢%3C/text%3E%3C/svg%3E" />
     <title>抓烏龜</title>
@@ -30,10 +30,19 @@
           <strong id="best-label">—</strong>
         </div>
         <div class="meter-item">
+          <span class="label">場次</span>
+          <strong id="career-games">0</strong>
+        </div>
+        <div class="meter-item">
+          <span class="label">烏龜</span>
+          <strong id="career-turtles">0</strong>
+        </div>
+        <div class="meter-item">
           <span class="label">本局</span>
           <strong id="scores" class="score-row"></strong>
         </div>
         <div class="meter-actions">
+          <button type="button" id="btn-track" class="secondary" aria-pressed="true">👁 追蹤</button>
           <button type="button" id="btn-mute" class="secondary" aria-pressed="true">音效開</button>
         </div>
       </section>
@@ -42,9 +51,28 @@
         <button type="button" id="btn-new">發牌中…</button>
       </div>
 
-      <p id="status" class="status" role="status">四人對局：點對手的牌背抽牌。</p>
+      <p id="status" class="status" role="status">先設定人數與難度，再開始發牌。</p>
 
       <section id="game" class="game" aria-label="抓烏龜牌桌">
+        <div id="setup" class="setup hidden" role="dialog" aria-label="開局設定">
+          <div class="setup-card">
+            <h2>🐢 開局設定</h2>
+            <p class="setup-label">人數</p>
+            <div class="seg" id="seg-players" role="radiogroup" aria-label="人數">
+              <button type="button" class="seg-btn" data-count="2" role="radio" aria-checked="false">2 人</button>
+              <button type="button" class="seg-btn" data-count="3" role="radio" aria-checked="false">3 人</button>
+              <button type="button" class="seg-btn on" data-count="4" role="radio" aria-checked="true">4 人</button>
+            </div>
+            <p class="setup-label">AI 難度</p>
+            <div class="seg" id="seg-diff" role="radiogroup" aria-label="AI 難度">
+              <button type="button" class="seg-btn" data-diff="easy" role="radio" aria-checked="false">🌱 輕鬆</button>
+              <button type="button" class="seg-btn on" data-diff="standard" role="radio" aria-checked="true">⚙️ 標準</button>
+              <button type="button" class="seg-btn" data-diff="hard" role="radio" aria-checked="false">😈 艱困</button>
+            </div>
+            <button type="button" id="btn-start">開始發牌</button>
+            <p class="setup-note">盲抽配對・剩烏龜的輸・生涯戰績自動保存</p>
+          </div>
+        </div>
         <div id="reveal" class="reveal hidden" aria-live="polite"></div>
         <div id="me-col" class="me-col">
           <p class="me-label">已丟出的牌（最近 8 張）</p>
@@ -62,10 +90,12 @@
       <details class="rules">
         <summary>規則</summary>
         <ul>
-          <li>52 張撲克＋1 張鬼牌（＝烏龜牌），盡量平分給 4 家。</li>
+          <li>52 張撲克＋1 張鬼牌（＝烏龜牌），依人數（2–4）盡量平分。</li>
           <li>開局先把手上的「對子」（同數字、不限花色）丟到中間。</li>
           <li>輪到你時，從任何一家手中<b>盲抽</b>一張（點牌背）；抽中能湊對的牌就立刻丟掉一對。</li>
           <li>牌張越來越少，最後手裡剩下唯一一張烏龜牌的人就是輸家；其餘各家 +1 分。</li>
+          <li>AI 難度：輕鬆＝隨機抽；標準＝抽牌最多的家；艱困＝愛抽你、避開只剩一張的家。</li>
+          <li>👁 追蹤開著時，AI 牌背下會標示「你曾被抽走什麼」，方便推理。</li>
         </ul>
       </details>
 

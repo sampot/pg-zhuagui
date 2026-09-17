@@ -10,6 +10,11 @@ import {
   checkDone,
   tally,
   cardText,
+  pickAiDrawTarget,
+  emptyStats,
+  parseStats,
+  applyRoundStats,
+  drawnFromHistory,
 } from "./game.js";
 
 // 可排序(nullary)的偽隨機產生器，像 Math.random 每次呼叫回一個值
@@ -220,5 +225,124 @@ describe("cardText", () => {
     expect(cardText({ rank: 1, suit: 0 })).toBe("A♠");
     expect(cardText({ rank: 11, suit: 1 })).toBe("J♥");
     expect(cardText({ rank: 0, suit: 4 })).toBe("🐢");
+  });
+});
+
+describe("newRound playerCount", () => {
+  it("supports 2 players and conserves 53 cards", () => {
+    const g = newRound(2, seq);
+    expect(g.playerCount).toBe(2);
+    const total = g.hands.reduce((a, h) => a + h.length, 0);
+    expect(total + g.removed.length).toBe(53);
+  });
+  it("clamps out-of-range counts to 2..4", () => {
+    expect(newRound(1, seq).playerCount).toBe(2);
+    expect(newRound(5, seq).playerCount).toBe(4);
+  });
+});
+
+function stateWithHands(hands) {
+  const g = newRound(hands.length, seq);
+  g.hands = hands.map((h) => h.map((r) => ({ rank: r.rank, suit: r.suit })));
+  return g;
+}
+
+describe("pickAiDrawTarget", () => {
+  it("easy: uniform random among live opponents", () => {
+    const g = stateWithHands([[{ rank: 5 }], [{ rank: 3 }], [{ rank: 4 }], []]);
+    expect(pickAiDrawTarget(g, 1, "easy", () => 0)).toBe(0);
+    expect(pickAiDrawTarget(g, 1, "easy", () => 0.99)).toBe(2);
+  });
+  it("standard: most-cards target regardless of rand", () => {
+    const g = stateWithHands([[{ rank: 5 }, { rank: 3 }], [], [{ rank: 4 }, { rank: 9 }, { rank: 7 }], [{ rank: 2 }]]);
+    expect(pickAiDrawTarget(g, 1, "standard", () => 0)).toBe(2);
+    expect(pickAiDrawTarget(g, 3, "standard", () => 0)).toBe(2);
+  });
+  it("hard: prefers drawing from the human (player 0)", () => {
+    const g = stateWithHands([[{ rank: 5 }, { rank: 3 }], [], [{ rank: 4 }, { rank: 9 }, { rank: 7 }], []]);
+    // standard would take p2 (3 cards); hard's human bonus flips it to p0
+    expect(pickAiDrawTarget(g, 1, "standard", () => 0)).toBe(2);
+    expect(pickAiDrawTarget(g, 1, "hard", () => 0)).toBe(0);
+  });
+  it("hard: avoids a near-empty hand holding its last card", () => {
+    const g = stateWithHands([[{ rank: 5 }], [], [{ rank: 4 }], [{ rank: 9 }, { rank: 3 }]]);
+    // ai=1: p0 has 1 (would score 1+5=6), p3 has 2 → p3 wins
+    expect(pickAiDrawTarget(g, 1, "hard", () => 0)).toBe(3);
+    // ai=2: p0 alone → p0 still chosen despite near-empty (no alternative)
+    const h = stateWithHands([[{ rank: 5 }], [], [], [{ rank: 9 }, { rank: 3 }]]);
+    expect(pickAiDrawTarget(h, 2, "hard", () => 0)).toBe(3);
+  });
+  it("hard: breaks score ties with rand", () => {
+    // ai=0: live=[1,3], both single-card non-humans → same score, rand decides
+    const g = stateWithHands([[], [{ rank: 9 }], [], [{ rank: 4 }]]);
+    expect(pickAiDrawTarget(g, 0, "hard", () => 0)).toBe(1);
+    expect(pickAiDrawTarget(g, 0, "hard", () => 0.99)).toBe(3);
+  });
+  it("returns -1 when no live opponent", () => {
+    const g = stateWithHands([[], [], [{ rank: 5 }], []]);
+    expect(pickAiDrawTarget(g, 2, "easy", () => 0)).toBe(-1);
+    expect(pickAiDrawTarget(g, 2, "hard", () => 0)).toBe(-1);
+  });
+});
+
+describe("stats persistence helpers", () => {
+  it("emptyStats has zeroed fields", () => {
+    const s = emptyStats();
+    expect(s).toEqual({ best: 0, games: 0, turtles: 0, muted: false, ai: [{ games: 0, turtles: 0 }, { games: 0, turtles: 0 }, { games: 0, turtles: 0 }] });
+  });
+  it("parseStats accepts valid JSON, rejects garbage", () => {
+    expect(parseStats('{"best":3,"games":5,"turtles":2,"muted":true,"ai":[{"games":5,"turtles":1},{"games":4,"turtles":1},{"games":0,"turtles":0}]}')).toEqual({ best: 3, games: 5, turtles: 2, muted: true, ai: [{ games: 5, turtles: 1 }, { games: 4, turtles: 1 }, { games: 0, turtles: 0 }] });
+    expect(parseStats("not json")).toBeNull();
+    expect(parseStats('"a string"')).toBeNull();
+    expect(parseStats('{"best":"x"}')).toBeNull();
+  });
+  it("parseStats fills missing ai slots", () => {
+    const s = parseStats('{"best":2,"games":2,"turtles":1}');
+    expect(s.ai.length).toBe(3);
+    expect(s.muted).toBe(false);
+  });
+  it("applyRoundStats counts games, player turtle, and per-AI records", () => {
+    let s = emptyStats();
+    s = applyRoundStats(s, 0, 4);
+    expect(s.games).toBe(1);
+    expect(s.turtles).toBe(1);
+    expect(s.ai.every((a) => a.games === 1)).toBe(true);
+    s = applyRoundStats(s, 2, 4);
+    expect(s.turtles).toBe(1);
+    expect(s.ai[1].turtles).toBe(1);
+    expect(s.ai[0].games).toBe(2);
+    // 2-player game: only ai[0] participates
+    let t = emptyStats();
+    t = applyRoundStats(t, 1, 2);
+    expect(t.ai[0].games).toBe(1);
+    expect(t.ai[0].turtles).toBe(1);
+    expect(t.ai[1].games).toBe(0);
+  });
+  it("applyRoundStats leaves no-turtle draws as games only", () => {
+    let s = emptyStats();
+    s = applyRoundStats(s, null, 4);
+    expect(s.games).toBe(1);
+    expect(s.turtles).toBe(0);
+    expect(s.ai.every((a) => a.games === 1 && a.turtles === 0)).toBe(true);
+  });
+});
+
+describe("drawnFromHistory", () => {
+  it("lists cards taken from a player, oldest-first, capped", () => {
+    const g = newRound(4, seq);
+    g.history = [
+      { by: 1, from: 2, card: { rank: 3, suit: 0 }, paired: false },
+      { by: 3, from: 0, card: { rank: 7, suit: 1 }, paired: true },
+      { by: 1, from: 2, card: { rank: 9, suit: 2 }, paired: false },
+      { by: 2, from: 3, card: { rank: 5, suit: 3 }, paired: false },
+      { text: "event" },
+      { by: 0, from: 2, card: { rank: 12, suit: 0 }, paired: true },
+    ];
+    expect(drawnFromHistory(g, 2, 2)).toEqual([
+      { rank: 9, suit: 2 },
+      { rank: 12, suit: 0 },
+    ]);
+    expect(drawnFromHistory(g, 0, 3)).toEqual([{ rank: 7, suit: 1 }]);
+    expect(drawnFromHistory(g, 1, 3)).toEqual([]);
   });
 });
